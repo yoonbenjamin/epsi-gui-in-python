@@ -1,81 +1,130 @@
+# @package epsi_gui
+#  A graphical user interface (GUI) for visualizing and interacting with EPSI data.
+#
+#  Version: 1.0
+#  This GUI allows users to display proton pictures, adjust contrast, plot EPSI data, and create color maps based on
+#  spectral values. It provides interactive tools for selecting regions of interest (ROIs) and generating color-coded
+#  maps to enhance the visualization of the data.
+#
+#  Version: 1.1
+#  General bugs fixed (robust system to avoid double plotting if on/off epsi button is clicked twice implemented, reset
+#  button now properly clears axes, system to ensure the removal of previous plots when new plots are written
+#  implemented), Global contrast set (once the user sets the contrast it remains), All variables the user may want to
+#  change depending on the experiment moved to the top of the file, Sliders removed (opting to have arrow buttons to
+#  iterate through data sets and image slices--includes updating text denoting the current iteration). 
+#
+#  Author: Benjamin (Ben) Yoon
+#  Date: Fri, Sep 29, 2023
+#  Version: 1.1
+
 import os
 import matplotlib.pyplot as plt
 import matplotlib.style as style
+from matplotlib import colors as m_colors
+from matplotlib.widgets import LassoSelector, Button
 import numpy as np
 import pydicom
-from matplotlib import colors as m_colors
-from matplotlib.widgets import LassoSelector, Slider, Button
 import cv2
 
 from SpectralData import SpectralData
+
+# USER SHOULD CHANGE VARIABLES TO MATCH DESIRED EXPERIMENT
+# Path to the base folder containing EPSI data and DICOM files.
+folder_path_base = "/Users/benjaminyoon/Desktop/PIGI folder/Projects/Project2 EPSI GUI in Python/EPSI " \
+                   "GUI/data_mouse_kidney/s_2023041103/"
+
+# Path to the folder containing DICOM files for proton pictures.
+folder_path_dcm = folder_path_base + "fsems_rat_liver_03.dmc/"
+
+# Path to the folder containing EPSI data files.
+folder_path_13c = folder_path_base + "epsi_16x12_13c_"
+
+# Path to the folder containing fid data files.
+folder_path_fid = folder_path_base + "fsems_rat_liver_03"
+
+# Shift values for the EPSI plot.
+epsi_plot_shift = [-0.3, -0.4]
+
+# Information about EPSI data.
+epsi_information = {
+    'pictures_to_read_write': 1,
+    'proton': 60,
+    'centric': 1
+}
+
+# Number of columns in the EPSI data grid.
+columns = 16
+
+# Number of rows in the EPSI data grid.
+rows = 12
+
+# Plot axis coordinates
+coordinates_axis_plot = (14, 233, 51, 215)
 
 # Set the style to a dark theme
 style.use('dark_background')
 
 
+# @class EPSIGUI
+#  A graphical user interface (GUI) for visualizing and interacting with EPSI (Echo Planar Spectroscopic Imaging) data.
+#
+#  This GUI allows users to display proton pictures, adjust contrast, plot EPSI data, and create color maps based on
+#  spectral values. It provides interactive tools for selecting regions of interest (ROIs) and generating color-coded
+#  maps to enhance the visualization of the data.
+#
+#  @author Benjamin (Ben) Yoon
+#  @date Fri, Sep 29, 2023
+#  @version 1.1
+#
+#  @param f_path_dcm Path to the directory containing DICOM files for proton pictures (str).
+#  @param f_path_13c Path to the directory containing EPSI data files (str).
+#  @param f_path_fid Path to the directory containing fid data files (str).
+#  @param epsi_shift A list of two shift values for the EPSI plot (list of float).
+#  @param epsi_info A dictionary containing information about EPSI data (dict).
+#                   Example:
+#                   {
+#                       'pictures_to_read_write': 1,  # Number of pictures to read and write (int)
+#                       'proton': 60,  # Proton picture number (int)
+#                       'centric': 1  # Centric flag (int)
+#                   }
 class EPSIGUI:
-    """
-    A graphical user interface (GUI) for visualizing and interacting with EPSI (Echo Planar Spectroscopic Imaging) data.
 
-    This GUI allows users to display proton pictures, adjust contrast, plot EPSI data, and create color maps based on
-    spectral values. It provides interactive tools for selecting regions of interest (ROIs) and generating color-coded
-    maps to enhance the visualization of the data.
-
-    Author: Benjamin (Ben) Yoon
-    Date: Fri, Jul 21, 2023
-    Version: 1.0
-
-    Parameters:
-        :param f_path_dcm: Path to the directory containing DICOM files for proton pictures (str).
-        :param f_path_13c: Path to the directory containing EPSI data files (str).
-        :param f_path_fid: Path to the directory containing fid data files (str).
-        :param epsi_shift: A list of two shift values for the EPSI plot (list of float).
-        :param epsi_info: A dictionary containing information about EPSI data (dict).
-                          Example:
-                          {
-                              'pictures_to_read_write': 1,  # Number of pictures to read and write (int)
-                              'proton': 60,  # Proton picture number (int)
-                              'centric': 1  # Centric flag (int)
-                          }
-    """
-
-    def __init__(self, f_path_dcm, f_path_13c, f_path_fid, epsi_shift, epsi_info):
-        """
-        Initializes the EPSIGUI class.
-
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
-
-        Parameters:
-            :param f_path_dcm: Path to the directory containing DICOM files for proton image slices (str).
-            :param f_path_13c: Path to the directory containing EPSI data files (str).
-            :param f_path_fid: Path to the directory containing fid data files (str).
-            :param epsi_shift: A list of two shift values for the EPSI plot (list of float).
-            :param epsi_info: A dictionary containing information about EPSI data (dict).
-                              Example:
-                              {
-                                  'pictures_to_read_write': 1,  # Number of pictures to read and write (int)
-                                  'proton': 60,  # Proton picture number (int)
-                                  'centric': 1  # Centric flag (int)
-                              }
-        """
-        self.image_slice_slider = None  # Slider for image slice iteration
-        self.image_button_left = None  # Button for decreasing image slice slider
-        self.image_slice_right = None  # Button for increasing image slice slider
-        self.contrast_slider = None  # Slider for contrast
-        self.contrast_button_left = None  # Button for decreasing contrast slider
-        self.contrast_button_right = None  # Button for increasing contrast slider
-        self.epsi_slider = None  # Slider for EPSI
-        self.epsi_button_left = None  # Button for decreasing epsi slider
-        self.epsi_button_right = None  # Button for increasing epsi slider
-        self.epsi_button_off = None  # Button for EPSI viewing toggle on
-        self.epsi_button_on = None  # Button for EPSI viewing toggle off
-        self.show_epsi = False
+    # Initializes the EPSIGUI class.
+    #
+    #  @author Benjamin (Ben) Yoon
+    #  @date Fri, Sep 29, 2023
+    #  @version 1.1
+    #
+    #  @param f_path_dcm Path to the directory containing DICOM files for proton image slices (str).
+    #  @param f_path_13c Path to the directory containing EPSI data files (str).
+    #  @param f_path_fid Path to the directory containing fid data files (str).
+    #  @param epsi_shift A list of two shift values for the EPSI plot (list of float).
+    #  @param epsi_info A dictionary containing information about EPSI data (dict).
+    #                   Example:
+    #                   {
+    #                       'pictures_to_read_write': 1,  # Number of pictures to read and write (int)
+    #                       'proton': 60,  # Proton picture number (int)
+    #                       'centric': 1  # Centric flag (int)
+    #                   }
+    #
+    #  @param cols Number of columns (int).
+    #  @param rs Number of rows (int).
+    #  @param coords_axis_plot Plot axis coordinates (Tuple)
+    def __init__(self, f_path_dcm, f_path_13c, f_path_fid, epsi_shift, epsi_info, cols, rs, coords_axis_plot):
+        # VERSION 1.0:
+        self.button_left_image_slice = None  # Button for decreasing image slice slider
+        self.button_right_image_slice = None  # Button for increasing image slice slider
+        self.button_left_contrast = None  # Button for decreasing contrast slider
+        self.button_right_contrast = None  # Button for increasing contrast slider
+        self.button_left_epsi = None  # Button for decreasing epsi slider
+        self.button_right_epsi = None  # Button for increasing epsi slider
+        self.button_off_write_epsi = None  # Button for EPSI viewing toggle on
+        self.button_on_write_epsi = None  # Button for EPSI viewing toggle off
+        self.is_write_epsi_on = False
         self.window = None
         self.axis = None
-        self.plot_axis = None
-        self.epsi_axis = None
+        self.axis_plot = None
+        self.axis_epsi_data = None
         self.class_SpectralData_instance = SpectralData()
         self.path_dmc = f_path_dcm
         self.path_fid = f_path_fid
@@ -84,12 +133,12 @@ class EPSIGUI:
         # self.picture_information = 1
         self.scale = True
         self.moving_average_window = 1
-        self.proton_picture = None
-        self.proton_picture_files = []
+        self.slice_proton_picture = None
+        self.files_proton_pictures = []
         for file_name in os.listdir(self.path_dmc):
             if file_name.endswith(".dcm"):
-                self.proton_picture_files.append(os.path.join(self.path_dmc, file_name))
-        self.proton_picture_files.sort()
+                self.files_proton_pictures.append(os.path.join(self.path_dmc, file_name))
+        self.files_proton_pictures.sort()
         self.plot_shift = epsi_shift
         self.info_epsi = epsi_info
         self.lro_fid = None
@@ -99,140 +148,150 @@ class EPSIGUI:
         self.x_epsi = None
         self.epsi = None
         self.spectral_data = None
-        self.color_map_button = None  # Button for colormap
-        self.color_map_axis = None
-        self.reset_button = None  # Button for resetting plots on axes
-        self.show_color_map = False
-        self.x = None
+        self.button_color_map = None  # Button for colormap
+        self.axis_color_map = None
+        self.button_reset = None  # Button for resetting plots on axes
+        self.is_color_map_on = False
+        self.coordinates = None
+
+        # VERSION 1.1
+        self.is_epsi_on = False
+        self.current_value_image_slice = 10
+        self.current_value_contrast = 1
+        self.current_value_epsi = 9
+        self.is_contrast_adjusted = False
+        self.columns = cols
+        self.rows = rs
+        self.coordinates_axis_plot = coords_axis_plot
+        self.text_element_image_slice = None
+        self.text_element_contrast = None
+        self.text_element_epsi = None
+
         self.initialize_gui()
 
     def initialize_gui(self):
         """
         Initializes the GUI components for the EPSIGUI.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 16, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
         self.window, self.axis = plt.subplots(figsize=(15, 7.95))
 
         # Create a panel to contain sliders and buttons
-        items_axis = plt.axes([0.7575, 0.11, 0.21, 0.77], frameon=True)
-        items_axis.set_title("Visualizer Items")
-        items_axis.xaxis.set_visible(False)
-        items_axis.yaxis.set_visible(False)
+        visualizer_items = plt.axes([0.7575, 0.11, 0.21, 0.77], frameon=True)
+        visualizer_items.set_title("Visualizer Items")
+        visualizer_items.xaxis.set_visible(False)
+        visualizer_items.yaxis.set_visible(False)
 
         # Add sliders and buttons to the panel
-        y_items_axis = 0.85
-        slider_height = 0.1
-        slider_spacing = 0.2
+        visualizer_items_y = 0.85
+        visualizer_items_spacing = 0.2
 
         # Add text above the sliders and buttons
-        text_above_sliders = "Image Slice"
-        plt.text(0.8625, y_items_axis, text_above_sliders, horizontalalignment='center', fontsize=10,
+        text_above_buttons = "Image Slice"
+        plt.text(0.8625, visualizer_items_y, text_above_buttons, horizontalalignment='center', fontsize=10,
                  transform=self.window.transFigure)
 
-        # Create slider
-        self.image_slice_slider = Slider(
-            plt.axes([0.795, y_items_axis - 0.088, 0.125, slider_height]), '', 0, len(self.proton_picture_files) - 1,
-            valstep=1)
-
         # Create buttons
-        self.image_button_left = Button(plt.axes([0.7625, y_items_axis - 0.065, 0.025, 0.05]), '←', color='black',
-                                        hovercolor='0.975')
-        self.image_slice_right = Button(plt.axes([0.939, y_items_axis - 0.065, 0.025, 0.05]), '→', color='black',
-                                        hovercolor='0.975')
+        self.button_left_image_slice = Button(plt.axes([0.784, visualizer_items_y - 0.065, 0.05, 0.05]), '←',
+                                              color='black',
+                                              hovercolor='0.6')
+        self.button_right_image_slice = Button(plt.axes([0.892, visualizer_items_y - 0.065, 0.05, 0.05]), '→',
+                                               color='black',
+                                               hovercolor='0.6')
+        self.text_element_image_slice = plt.text(-0.725, visualizer_items_y - 0.5, self.current_value_image_slice,
+                                                 fontsize=12, color='white')
 
         # Connect button callbacks
-        self.image_button_left.on_clicked(self.decrease_picture_slider)
-        self.image_slice_right.on_clicked(self.increase_picture_slider)
-
-        # Connect slider callback
-        self.image_slice_slider.on_changed(self.show_proton_picture)
+        self.button_left_image_slice.on_clicked(self.decrement_image_slice)
+        self.button_right_image_slice.on_clicked(self.increment_image_slice)
 
         # Add text above the sliders and buttons
-        text_above_sliders = "Contrast Level"
-        plt.text(0.8625, y_items_axis - slider_spacing + 0.085, text_above_sliders, horizontalalignment='center',
+        text_above_buttons = "Contrast Level"
+        plt.text(0.8625, visualizer_items_y - visualizer_items_spacing + 0.085, text_above_buttons,
+                 horizontalalignment='center',
                  fontsize=10, transform=self.window.transFigure)
 
-        # Create slider
-        self.contrast_slider = plt.Slider(
-            plt.axes([0.795, y_items_axis - slider_spacing, 0.123, slider_height]), '', 0.0, 2.0, valstep=0.1,
-            valinit=1.0)
-
         # Create buttons
-        self.contrast_button_left = Button(plt.axes([0.7625, y_items_axis - slider_spacing + 0.025, 0.025, 0.05]), '←',
-                                           color='black', hovercolor='0.975')
-        self.contrast_button_right = Button(plt.axes([0.939, y_items_axis - slider_spacing + 0.025, 0.025, 0.05]), '→',
-                                            color='black', hovercolor='0.975')
+        self.button_left_contrast = Button(
+            plt.axes([0.784, visualizer_items_y - visualizer_items_spacing + 0.025, 0.05, 0.05]), '←',
+            color='black', hovercolor='0.6')
+        self.button_right_contrast = Button(
+            plt.axes([0.892, visualizer_items_y - visualizer_items_spacing + 0.025, 0.05, 0.05]), '→',
+            color='black', hovercolor='0.6')
+        self.text_element_contrast = plt.text(-0.675, visualizer_items_y - 0.5, self.current_value_contrast,
+                                              fontsize=12,
+                                              color='white')
 
         # Connect button callbacks
-        self.contrast_button_left.on_clicked(self.decrease_contrast_slider)
-        self.contrast_button_right.on_clicked(self.increase_contrast_slider)
-
-        # Connect slider callback
-        self.contrast_slider.on_changed(self.adjust_proton_picture_contrast)
+        self.button_left_contrast.on_clicked(self.decrement_contrast)
+        self.button_right_contrast.on_clicked(self.increment_contrast)
 
         # Add text above the sliders and buttons
-        text_above_sliders = "EPSI"
-        plt.text(0.863, y_items_axis - slider_spacing - 0.03, text_above_sliders, horizontalalignment='center',
+        text_above_buttons = "EPSI"
+        plt.text(0.863, visualizer_items_y - visualizer_items_spacing - 0.03, text_above_buttons,
+                 horizontalalignment='center',
                  fontsize=10, transform=self.window.transFigure)
 
-        # Create slider
-        self.epsi_slider = Slider(plt.axes([0.795, y_items_axis - slider_spacing - 0.1175, 0.125, slider_height]), '',
-                                  1, 17, valstep=1)
-
         # Create buttons
-        self.epsi_button_left = Button(plt.axes([0.7625, y_items_axis - slider_spacing - 0.094, 0.025, 0.05]), '←',
-                                       color='black', hovercolor='0.975')
-        self.epsi_button_right = Button(plt.axes([0.939, y_items_axis - slider_spacing - 0.094, 0.025, 0.05]), '→',
-                                        color='black', hovercolor='0.975')
+        self.button_left_epsi = Button(
+            plt.axes([0.784, visualizer_items_y - visualizer_items_spacing - 0.094, 0.05, 0.05]), '←',
+            color='black', hovercolor='0.6')
+        self.button_right_epsi = Button(
+            plt.axes([0.892, visualizer_items_y - visualizer_items_spacing - 0.094, 0.05, 0.05]), '→',
+            color='black', hovercolor='0.6')
+        self.text_element_epsi = plt.text(-0.675, visualizer_items_y - 0.5, self.current_value_epsi, fontsize=12,
+                                          color='white')
 
         # Connect button callbacks
-        self.epsi_button_left.on_clicked(self.decrease_epsi_slider)
-        self.epsi_button_right.on_clicked(self.increase_epsi_slider)
-
-        # Connect slider callback
-        self.epsi_slider.on_changed(self.remove_previous_epsi_plot)
+        self.button_left_epsi.on_clicked(self.decrement_epsi)
+        self.button_right_epsi.on_clicked(self.increment_epsi)
 
         # Add text above the buttons
-        text_above_sliders = "View EPSI"
-        plt.text(0.865, y_items_axis - slider_spacing - 0.15, text_above_sliders, horizontalalignment='center',
+        text_above_buttons = "View EPSI"
+        plt.text(0.865, visualizer_items_y - visualizer_items_spacing - 0.15, text_above_buttons,
+                 horizontalalignment='center',
                  fontsize=10, transform=self.window.transFigure)
 
-        self.epsi_button_on = plt.Button(plt.axes([0.7665, y_items_axis - slider_spacing - 0.22, 0.09, 0.05]),
-                                         'ON', color='black')
-        self.epsi_button_off = plt.Button(plt.axes([0.8685, y_items_axis - slider_spacing - 0.22, 0.09, 0.05]),
-                                          'OFF', color='black')
+        self.button_on_write_epsi = plt.Button(
+            plt.axes([0.7665, visualizer_items_y - visualizer_items_spacing - 0.22, 0.09, 0.05]),
+            'ON', color='black', hovercolor='0.6')
+        self.button_off_write_epsi = plt.Button(
+            plt.axes([0.8685, visualizer_items_y - visualizer_items_spacing - 0.22, 0.09, 0.05]),
+            'OFF', color='black', hovercolor='0.6')
 
         # Connect button callback
-        self.epsi_button_on.on_clicked(self.on_button_callback)
-        self.epsi_button_off.on_clicked(self.off_button_callback)
+        self.button_on_write_epsi.on_clicked(self.callback_epsi_button_on)
+        self.button_off_write_epsi.on_clicked(self.callback_button_epsi_off)
 
-        self.show_proton_picture(0)
+        self.show_proton_picture()
 
         # Add the color map button
-        self.color_map_button = plt.Button(plt.axes([0.77425, y_items_axis - slider_spacing + - 0.3175, 0.177,
-                                                     0.05]), 'Colormap', color='black')
-        self.color_map_button.on_clicked(self.on_clicked_color_map)
+        self.button_color_map = plt.Button(
+            plt.axes([0.77425, visualizer_items_y - visualizer_items_spacing + - 0.3175, 0.177,
+                      0.05]), 'Colormap', color='black', hovercolor='0.6')
+        self.button_color_map.on_clicked(self.on_clicked_button_color_map)
 
         # Add the refresh button
-        self.reset_button = plt.Button(plt.axes([0.77425, y_items_axis - (slider_spacing * 3) + 0.01, 0.177, 0.05]),
-                                       'RESET', color='black')
-        self.reset_button.on_clicked(self.remove_axes)
+        self.button_reset = plt.Button(
+            plt.axes([0.77425, visualizer_items_y - (visualizer_items_spacing * 3) + 0.01, 0.177, 0.05]),
+            'RESET', color='black', hovercolor='0.6')
+        self.button_reset.on_clicked(self.remove_axes)
 
         # Remove x and y axis labels
         self.axis.set_xticks([])
         self.axis.set_yticks([])
 
         # Create panels to contain zoomed EPSI subplots
-        a_axis = plt.axes([0.032, 0.52, 0.24, 0.36], frameon=True)
-        a_axis.set_title("EPSI Subplots")
-        a_axis.xaxis.set_visible(False)
-        a_axis.yaxis.set_visible(False)
-        b_axis = plt.axes([0.032, 0.11, 0.24, 0.36], frameon=True)
-        b_axis.xaxis.set_visible(False)
-        b_axis.yaxis.set_visible(False)
+        axis_a = plt.axes([0.032, 0.52, 0.24, 0.36], frameon=True)
+        axis_a.set_title("EPSI Subplots")
+        axis_a.xaxis.set_visible(False)
+        axis_a.yaxis.set_visible(False)
+        axis_b = plt.axes([0.032, 0.11, 0.24, 0.36], frameon=True)
+        axis_b.xaxis.set_visible(False)
+        axis_b.yaxis.set_visible(False)
 
         # Add tmp text in subplot panels
         text_a = "A"
@@ -245,193 +304,237 @@ class EPSIGUI:
         # Show the plot
         plt.show()
 
-    def decrease_picture_slider(self, event):
+    def decrement_image_slice(self, event):
         """
         Decreases the value of the image slice slider by one step.
 
         :param event: The event object generated by the slider interaction.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
-        current_value = self.image_slice_slider.val
-        step = self.image_slice_slider.valstep
-        self.image_slice_slider.set_val(max(current_value - step, self.image_slice_slider.valmin))
+        if self.current_value_image_slice > 0:
+            self.current_value_image_slice -= 1
+            # Update the text element in the GUI
+            self.text_element_image_slice.set_text(self.current_value_image_slice)
+            self.show_proton_picture()
 
-    def increase_picture_slider(self, event):
+    def increment_image_slice(self, event):
         """
         Increases the value of the image slice slider by one step.
 
         :param event: The event object generated by the slider interaction.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
-        current_value = self.image_slice_slider.val
-        step = self.image_slice_slider.valstep
-        self.image_slice_slider.set_val(min(current_value + step, self.image_slice_slider.valmax))
+        if self.current_value_image_slice < 19:
+            self.current_value_image_slice += 1
+            # Update the text element in the GUI
+            self.text_element_image_slice.set_text(self.current_value_image_slice)
+            self.show_proton_picture()
 
-    def show_proton_picture(self, proton_picture_index):
+    def show_proton_picture(self):
         """
         Displays a proton picture corresponding to the given index.
 
-        :param proton_picture_index: Index of the proton picture to display (int).
-
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Jul 21, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Jul 21, 2023
+        @version 1.0
         """
-        proton_picture_index = int(proton_picture_index)
-        proton_picture_file_path = self.proton_picture_files[proton_picture_index]
-        dcm_read = pydicom.dcmread(proton_picture_file_path)
-        self.proton_picture = dcm_read.pixel_array
-        self.axis.imshow(self.proton_picture, cmap='gray')
+        file_path_proton_picture = self.files_proton_pictures[self.current_value_image_slice]
+        dcm_read = pydicom.dcmread(file_path_proton_picture)
+        self.slice_proton_picture = dcm_read.pixel_array
+        self.axis.clear()
+        self.axis.axis("off")
+        self.axis.imshow(self.slice_proton_picture, cmap='gray')
+        if self.is_contrast_adjusted is True:
+            self.adjust_proton_picture_contrast()
         self.window.canvas.draw()
 
-    def decrease_contrast_slider(self, event):
+    def decrement_contrast(self, event):
         """
         Decreases the value of the contrast slider by one step.
 
         :param event: The event object generated by the slider interaction.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
-        current_value = self.contrast_slider.val
-        step = self.contrast_slider.valstep
-        self.contrast_slider.set_val(max(current_value - step, self.contrast_slider.valmin))
+        if self.current_value_contrast == 0.05:
+            return
 
-    def increase_contrast_slider(self, event):
+        if self.current_value_contrast == 0.2:
+            self.current_value_contrast = 0.05
+        else:
+            self.current_value_contrast -= 0.2
+
+        rounded_value_contrast = "{:.1f}".format(self.current_value_contrast)
+        # Update the text element in the GUI
+        self.text_element_contrast.set_text(rounded_value_contrast)
+        self.adjust_proton_picture_contrast()
+
+    def increment_contrast(self, event):
         """
         Increases the value of the contrast slider by one step.
 
         :param event: The event object generated by the slider interaction.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
-        current_value = self.contrast_slider.val
-        step = self.contrast_slider.valstep
-        self.contrast_slider.set_val(min(current_value + step, self.contrast_slider.valmax))
+        if self.current_value_contrast < 3:
+            self.current_value_contrast += 0.2
 
-    def adjust_proton_picture_contrast(self, value):
+        rounded_value_contrast = "{:.1f}".format(self.current_value_contrast)
+        # Update the text element in the GUI
+        self.text_element_contrast.set_text(rounded_value_contrast)
+        self.adjust_proton_picture_contrast()
+
+    def adjust_proton_picture_contrast(self):
         """
         Adjusts the contrast of the displayed proton picture using Contrast Limited Adaptive Histogram Equalization
         (CLAHE).
 
-        :param value: The clip limit used for contrast adjustment (float).
-
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
+        self.is_contrast_adjusted = True
         # Normalize pixel values to [0, 1]
-        normalized_img = (self.proton_picture - np.min(self.proton_picture)) / (
-                np.max(self.proton_picture) - np.min(self.proton_picture))
-
-        # Define contrast value (received as input parameter)
-        contrast_value = value
+        proton_picture_normalized = (self.slice_proton_picture - np.min(self.slice_proton_picture)) / (
+                np.max(self.slice_proton_picture) - np.min(self.slice_proton_picture))
 
         # Apply CLAHE for contrast adjustment
-        clahe = cv2.createCLAHE(clipLimit=contrast_value, tileGridSize=(8, 8))
-        clahe_img = clahe.apply(np.uint8(normalized_img * 255))
+        clahe = cv2.createCLAHE(clipLimit=self.current_value_contrast, tileGridSize=(8, 8))
+        proton_picture_clahe = clahe.apply(np.uint8(proton_picture_normalized * 255))
 
         # Rescale pixel values back to [0, 1]
-        rescaled_img = clahe_img / 255.0
+        proton_picture_rescaled = proton_picture_clahe / 255.0
 
-        self.axis.imshow(rescaled_img, cmap='gray')
+        self.axis.clear()
+        self.axis.axis("off")
+        self.axis.imshow(proton_picture_rescaled, cmap='gray')
         self.window.canvas.draw()
 
-    def decrease_epsi_slider(self, event):
+    def decrement_epsi(self, event):
         """
         Decreases the value of the EPSI slider by one step.
 
         :param event: The event object generated by the slider interaction.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
-        current_value = self.epsi_slider.val
-        step = self.epsi_slider.valstep
-        self.epsi_slider.set_val(max(current_value - step, self.epsi_slider.valmin))
+        if self.current_value_epsi > 0:
+            self.current_value_epsi -= 1
+            # Update the text element in the GUI
+            self.text_element_epsi.set_text(self.current_value_epsi)
+            self.window.canvas.draw()
+            self.remove_previous_epsi_plot()
 
-    def increase_epsi_slider(self, event):
+    def increment_epsi(self, event):
         """
         Increases the value of the EPSI slider by one step.
 
         :param event: The event object generated by the slider interaction.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
-        current_value = self.epsi_slider.val
-        step = self.epsi_slider.valstep
-        self.epsi_slider.set_val(min(current_value + step, self.epsi_slider.valmax))
+        if self.current_value_epsi < 16:
+            self.current_value_epsi += 1
+            # Update the text element in the GUI
+            self.text_element_epsi.set_text(self.current_value_epsi)
+            self.window.canvas.draw()
+            self.remove_previous_epsi_plot()
 
-    def remove_previous_epsi_plot(self, value):
+    def remove_previous_epsi_plot(self):
         """
         Removes the previous EPSI plot when the EPSI slider changes.
 
-        :param value: The new value of the EPSI slider (float).
-
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Jul 21, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Jul 21, 2023
+        @version 1.0
         """
         # Clear and replot epsi_axis and grid_axis whenever the EPSI slider changes
-        if self.show_epsi:
-            if self.epsi_axis:
-                self.epsi_axis.remove()
-            if self.plot_axis:
-                self.plot_axis.remove()
+        if self.is_write_epsi_on:
+            if self.axis_epsi_data is not None:
+                self.axis_epsi_data.clear()
+                self.axis_epsi_data.axis("off")
+            if self.axis_plot is not None:
+                self.axis_plot.clear()
+                self.axis_plot.axis("off")
         self.write_epsi_plot(None)
 
-    # Define the callback function for the plot epsi on button (Yoon, 2023, v1.0)
-    def on_button_callback(self, event):
-        self.epsi_show(event, show=True)  # Call the epsi_show function with the show parameter set to True
+    def callback_epsi_button_on(self, event):
+        """
+        Callback function for the "Plot EPSI On" button.
 
-    # Define the callback function for the plot epsi off button (Yoon, 2023, v1.0)
-    def off_button_callback(self, event):
-        self.epsi_show(event, show=False)  # Call the epsi_show function with the show parameter set to False
+        :param event: The event object generated by the button click.
 
-    def epsi_show(self, event, show):
+        @author Benjamin (Ben) Yoon
+        @date Mon, Aug 14, 2023
+        @version 1.0
+        """
+        if self.is_epsi_on is False:
+            self.is_epsi_on = True
+            self.process_epsi(event, write_epsi=True)  # Call the epsi_show function with the show parameter set to True
+
+    def callback_button_epsi_off(self, event):
+        """
+        Callback function for the "Plot EPSI Off" button.
+
+        :param event: The event object generated by the button click.
+
+        @author Benjamin (Ben) Yoon
+        @date Mon, Aug 14, 2023
+        @version 1.0
+        """
+        if self.is_epsi_on is True:
+            self.process_epsi(event,
+                              write_epsi=False)  # Call the epsi_show function with the write epsi parameter set to
+            # False
+            self.is_epsi_on = False
+
+    def process_epsi(self, event, write_epsi):
         """
         Initiates the display of the EPSI plot when the "Plot EPSI" button is clicked.
 
         :param event: The event generated by clicking the "Plot EPSI" button.
-        :param show: A boolean value indicating whether to show or hide the EPSI plot.
+        :param write_epsi: A boolean value indicating whether to show or hide the EPSI plot.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Mon, Aug 14, 2023
+        @version 1.0
         """
-        self.show_epsi = show
-        if show:
+        self.is_write_epsi_on = write_epsi
+        if write_epsi:
             self.write_epsi_plot(event)
         else:
-            self.epsi_axis.remove()
-            self.plot_axis.remove()
+            self.axis_epsi_data.remove()
+            self.axis_plot.remove()
             self.window.canvas.draw()
 
-    def set_epsi(self):
+    def read_epsi_plot(self):
         """
-        Set the EPSI data based on configuration and slider value.
+        Set the EPSI data based on configuration and current value.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Aug 11, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Aug 11, 2023
+        @version 1.0
         """
         # Constants
         proton_quarter = self.info_epsi['proton'] / 4
 
         # Read EPSI data based on the EPSI slider value
-        self.path_epsi = f"{self.path_13c}{self.epsi_slider.val:02d}"
+        self.path_epsi = f"{self.path_13c}{self.current_value_epsi:02d}"
         spectral_data = self.class_SpectralData_instance.read_write_spectral_data(self.info_epsi, self.path_epsi,
                                                                                   proton_quarter)
         # Preprocessing
@@ -444,20 +547,18 @@ class EPSIGUI:
         else:
             maximum_spectral_data_value = np.max(spectral_data, axis=2)
             spectral_data = spectral_data / maximum_spectral_data_value
-        columns = 16
-        rows = 12
         epsi = []
-        for i in range(0, rows):
+        for i in range(0, self.rows):
             row_information = []
-            for j in range(0, columns):
+            for j in range(0, self.columns):
                 if np.max(spectral_data[i, j, :]) < 0.20:
                     spectral_data[i, j, :] = np.nan
                 row_information = np.concatenate(
                     (np.squeeze(row_information), np.squeeze(np.roll(spectral_data[i, j, :], 0))))
-            epsi = np.concatenate((np.squeeze(epsi), np.squeeze(row_information + rows - i)))
-        x_epsi = np.tile(np.arange(0, spectral_data.shape[2] * columns), rows)
-        for nan_rows in range(0, rows - 1):
-            epsi[nan_rows * spectral_data.shape[2] * columns] = np.nan
+            epsi = np.concatenate((np.squeeze(epsi), np.squeeze(row_information + self.rows - i)))
+        x_epsi = np.tile(np.arange(0, spectral_data.shape[2] * self.columns), self.rows)
+        for nan_rows in range(0, self.rows - 1):
+            epsi[nan_rows * spectral_data.shape[2] * self.columns] = np.nan
         epsi = np.convolve(epsi, np.ones(self.moving_average_window), mode='same') / self.moving_average_window
         epsi[~np.isnan(epsi)] -= 1
 
@@ -477,105 +578,104 @@ class EPSIGUI:
 
         :param event: The event generated for generating the EPSI plot.
 
-        Author: Benjamin Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin Yoon
+        @date Mon, Aug 14, 2023
+        @version 1.0
         """
-        self.set_epsi()
-        if self.show_color_map:
-            self.color_map_axis.remove()
-            self.onselect_roi(self.x)
-        columns = 16
-        rows = 12
-        if self.show_epsi:
-            epsi_axis = self.axis.inset_axes(
-                [((self.lro_fid - self.lro_epsi) / 2 + self.plot_shift[0] * self.lro_epsi / columns) /
-                 self.lro_fid, 1 - ((self.lpe_fid - self.lpe_epsi) / 2 + rows * self.lpe_epsi / rows -
-                                    self.plot_shift[1] * self.lpe_epsi / rows) / self.lpe_fid,
-                 self.lro_epsi / self.lro_fid, self.lpe_epsi / self.lpe_fid])
-            plot_axis = self.axis.inset_axes(
-                [((self.lro_fid - self.lro_epsi) / 2 + self.plot_shift[0] * self.lro_epsi / columns) /
-                 self.lro_fid, ((self.lpe_fid - self.lpe_epsi) / 2 + self.plot_shift[1] * self.lpe_epsi / rows) /
-                 self.lpe_fid, self.lro_epsi / self.lro_fid, self.lpe_epsi / self.lpe_fid])
-            self.epsi_axis = epsi_axis
-            self.plot_axis = plot_axis
-            epsi_axis.plot(self.x_epsi, np.squeeze(self.epsi), color='#FF00FF', linewidth=1)
-            epsi_axis.set_ylim([0, rows])
-            epsi_axis.set_xlim([0, columns * self.spectral_data.shape[2]])
-            epsi_axis.axis('off')
-            for i in range(0, columns + 1):
-                plot_axis.axvline(x=i, linestyle='--', color='w', linewidth=1, alpha=0.5)
-            for j in range(0, rows + 1):
-                plot_axis.axhline(y=j, linestyle='--', color='w', linewidth=1, alpha=0.5)
-            plot_axis.set_ylim([0, rows + 0.05])
-            plot_axis.set_xlim([0, columns + 0.05])
-            plot_axis.axis('off')
+        self.read_epsi_plot()
+        if self.is_color_map_on and self.axis_color_map is not None:
+            self.axis_color_map.remove()
+            self.axis_color_map = None
+            self.onselect_roi(self.coordinates)
+        if self.is_write_epsi_on:
+            if self.axis_epsi_data is None:
+                axis_epsi = self.axis.inset_axes(
+                    [((self.lro_fid - self.lro_epsi) / 2 + self.plot_shift[0] * self.lro_epsi / self.columns) /
+                    self.lro_fid, 1 - ((self.lpe_fid - self.lpe_epsi) / 2 + self.rows * self.lpe_epsi / self.rows -
+                                        self.plot_shift[1] * self.lpe_epsi / self.rows) / self.lpe_fid,
+                    self.lro_epsi / self.lro_fid, self.lpe_epsi / self.lpe_fid])
+                self.axis_epsi_data = axis_epsi
+            self.axis_epsi_data.plot(self.x_epsi, np.squeeze(self.epsi), color='#FF00FF', linewidth=1)
+            self.axis_epsi_data.set_ylim([0, self.rows])
+            self.axis_epsi_data.set_xlim([0, self.columns * self.spectral_data.shape[2]])
+            self.axis_epsi_data.axis('off')
+            if self.axis_plot is None:
+                axis_p = self.axis.inset_axes([((self.lro_fid - self.lro_epsi) / 2 + self.plot_shift[0] * self.lro_epsi
+                                                / self.columns) / self.lro_fid, ((self.lpe_fid - self.lpe_epsi) / 2 +
+                                                                                 self.plot_shift[1] * self.lpe_epsi /
+                                                                                 self.rows) / self.lpe_fid,
+                                               self.lro_epsi / self.lro_fid, self.lpe_epsi / self.lpe_fid])
+                self.axis_plot = axis_p
+            for i in range(0, self.columns + 1):
+                self.axis_plot.axvline(x=i, linestyle='--', color='w', linewidth=1, alpha=0.5)
+            for j in range(0, self.rows + 1):
+                self.axis_plot.axhline(y=j, linestyle='--', color='w', linewidth=1, alpha=0.5)
+            self.axis_plot.set_ylim([0, self.rows + 0.05])
+            self.axis_plot.set_xlim([0, self.columns + 0.05])
+            self.axis_plot.axis('off')
             self.window.canvas.draw()
 
-    def on_clicked_color_map(self, event):
+    def on_clicked_button_color_map(self, event):
         """
         Callback function for the color map button click event.
         Initiates lasso selection for selecting a region of interest (ROI).
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Aug 11, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Aug 11, 2023
+        @version 1.0
         """
-        self.show_color_map = True
-        self.set_epsi()
+        self.is_color_map_on = True
+        self.read_epsi_plot()
         # Create a lasso selector for the axis
         roi = LassoSelector(self.axis, onselect=self.onselect_roi)
         # Show the plot with the lasso selector active
         plt.show()
 
-    def onselect_roi(self, x):
+    def onselect_roi(self, coords):
         """
         Callback function for the ROI (Region of Interest) selection event using the lasso selector.
         Gets all coordinates to plot, translates data coordinates into inset axis coordinates, make a color map for the
         ROI.
-        for subsequently drawing the color map.
 
-        :param x: (list) List of coordinates representing the perimeter of the ROI.
+        :param coords: (list) List of coordinates representing the perimeter of the ROI.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Aug 11, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Aug 11, 2023
+        @version 1.0
         """
-        self.x = x
-        columns = 16
-        rows = 12
+        self.coordinates = coords
 
-        # Create a color map inset axis within the axis
-        color_map_axis = self.axis.inset_axes(
-            [((self.lro_fid - self.lro_epsi) / 2 + self.plot_shift[0] * self.lro_epsi / columns) /
-             self.lro_fid, ((self.lpe_fid - self.lpe_epsi) / 2 + self.plot_shift[1] * self.lpe_epsi / rows) /
-             self.lpe_fid, self.lro_epsi / self.lro_fid, self.lpe_epsi / self.lpe_fid])
+        if self.axis_color_map is None:
+            # Create a color map inset axis within the axis
+            axis_color = self.axis.inset_axes(
+                [((self.lro_fid - self.lro_epsi) / 2 + self.plot_shift[0] * self.lro_epsi / self.columns) /
+                 self.lro_fid, ((self.lpe_fid - self.lpe_epsi) / 2 + self.plot_shift[1] * self.lpe_epsi / self.rows) /
+                 self.lpe_fid, self.lro_epsi / self.lro_fid, self.lpe_epsi / self.lpe_fid])
+        else:
+            axis_color = self.axis_color_map
 
         # Find interior points within the perimeter
-        interior_coords = self.find_interior_points(x)
+        coordinates_interior = self.get_interior_points(coords)
 
         # Combine perimeter and interior coordinates
-        total_coords = x + interior_coords
+        coordinates_total = coords + coordinates_interior
 
         # Load subplot information: [x_min, x_max, y_min, y_max, max_spectral_value]
-        plot_axis_coords = (14, 233, 51, 215)  # plot axis coords
-        num_rows = 12
-        num_cols = 16
-        subplot_info = self.calculate_subplot_info(plot_axis_coords, num_rows, num_cols)
+        array_subplots = self.load_array_subplots(self.coordinates_axis_plot, self.rows, self.columns)
 
         # Create a color map gradient
-        color_map_gradient = []
-        for info in subplot_info:
-            max_value = info[4]
-            normalized_value = max_value / np.nanmax(self.epsi)
-            rgba_color = (0.0, 0.0, normalized_value, normalized_value)
-            color_map_gradient.append(rgba_color)
+        gradient_color_map = []
+        for subplot in array_subplots:
+            value_maximum = subplot[4]
+            value_normalized = value_maximum / np.nanmax(self.epsi)
+            color_rgba = (0.0, 0.0, value_normalized, value_normalized)
+            gradient_color_map.append(color_rgba)
 
         # Initialize the array for data and color mapping
         data_color_map = []
 
         # Define RGB values for the color points
-        color_points = [
+        points_color_map_gradient = [
             (0.0, (0.11, 0.435, 0.973)),  # Blue
             (0.2, (0.153, 0.733, 0.878)),  # Battery Charged Blue
             (0.4, (0.192, 0.859, 0.573)),  # Eucalyptus
@@ -585,144 +685,144 @@ class EPSIGUI:
         ]
 
         # Define the custom colormap with RGB color points
-        cmap = m_colors.LinearSegmentedColormap.from_list('custom_colormap', color_points)
+        color_map = m_colors.LinearSegmentedColormap.from_list('custom_colormap', points_color_map_gradient)
 
         # Assign colors based on max spectral values
-        for coord in total_coords:
-            x, y = coord
+        for coord in coordinates_total:
+            coords, y = coord
             matching_subplot = None
 
-            for info in subplot_info:
-                x_min, x_max, y_min, y_max, _ = info
-                if x_min <= x <= x_max and y_min <= y <= y_max:
-                    matching_subplot = info
+            for subplot in array_subplots:
+                x_min, x_max, y_min, y_max, _ = subplot
+                if x_min <= coords <= x_max and y_min <= y <= y_max:
+                    matching_subplot = subplot
                     break
 
             if matching_subplot:
-                color = cmap(matching_subplot[4])
+                color = color_map(matching_subplot[4])
 
                 # Convert data coordinates to inset axis coordinates
-                inset_coord = self.convert_to_inset_coords([(x, y)], color_map_axis)[0]
+                coordinates_inset = self.convert_to_inset_coordinates([(coords, y)], axis_color)[0]
 
-                data_color_map.append((inset_coord, color))
+                data_color_map.append((coordinates_inset, color))
 
         # Set the color map axis
-        self.color_map_axis = color_map_axis
+        self.axis_color_map = axis_color
 
         # Plot the coordinates on the color map axis
         self.plot_on_color_map(data_color_map)
 
-        color_map_axis.axis('off')  # Turn off axis ticks and labels
+        axis_color.axis('off')  # Turn off axis ticks and labels
 
         # Refresh the plot to display the ROI on the color map axis
         plt.draw()
 
     @staticmethod
-    def find_interior_points(perimeter_coords):
+    def get_interior_points(coordinates_perimeter):
         """
         Finds interior points within the given perimeter using a grid-based approach.
 
-        :param perimeter_coords: (list) List of perimeter coordinates.
+        :param coordinates_perimeter: (list) List of perimeter coordinates.
         :return: (list) List of interior coordinates.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Aug 11, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Aug 11, 2023
+        @version 1.0
         """
         # Import required libraries
         from shapely.geometry import Polygon, Point
 
         # Create a shapely polygon from the perimeter coordinates
-        polygon = Polygon(perimeter_coords)
+        polygon = Polygon(coordinates_perimeter)
 
         # Determine whether the shape is closed by checking if the first and last points are the same
-        is_closed_shape = perimeter_coords[0] == perimeter_coords[-1]
+        is_roi_closed = coordinates_perimeter[0] == coordinates_perimeter[-1]
 
         # Get bounding box coordinates
-        min_x, min_y = min(perimeter_coords, key=lambda item: item[0])[0], \
-            min(perimeter_coords, key=lambda item: item[1])[1]
-        max_x, max_y = max(perimeter_coords, key=lambda item: item[0])[0], \
-            max(perimeter_coords, key=lambda item: item[1])[1]
+        min_x, min_y = min(coordinates_perimeter, key=lambda item: item[0])[0], \
+            min(coordinates_perimeter, key=lambda item: item[1])[1]
+        max_x, max_y = max(coordinates_perimeter, key=lambda item: item[0])[0], \
+            max(coordinates_perimeter, key=lambda item: item[1])[1]
 
         # Define grid spacing
         grid_spacing = 0.5
 
         # Generate interior points using a grid-based approach
-        interior_coords = []
+        coords_interior = []
         for x in np.arange(min_x, max_x + grid_spacing, grid_spacing):
             for y in np.arange(min_y, max_y + grid_spacing, grid_spacing):
                 point = Point(x, y)
 
                 # Check if the point falls within the polygon
                 if point.within(polygon):
-                    interior_coords.append((x, y))
+                    coords_interior.append((x, y))
 
         # If the shape is not closed, connect the first and last points
-        if not is_closed_shape:
-            interior_coords.append(interior_coords[0])
+        if not is_roi_closed:
+            coords_interior.append(coords_interior[0])
 
-        return interior_coords
+        return coords_interior
 
-    def calculate_subplot_info(self, plot_axis_coords, num_rows, num_cols):
+    def load_array_subplots(self, coords_axis_plot, rs, cs):
         """
         Calculates information for each subplot based on the given plot axis coordinates.
 
-        :param plot_axis_coords: (tuple) The coordinates of the main plot axis (x_min, x_max, y_min, y_max).
-        :param num_rows: (int) Number of rows in the subplot grid.
-        :param num_cols: (int) Number of columns in the subplot grid.
+        :param coords_axis_plot: (tuple) The coordinates of the main plot axis (x_min, x_max, y_min, y_max).
+        :param rs: (int) Number of rows in the subplot grid.
+        :param cs: (int) Number of columns in the subplot grid.
 
         :return: (list) List of lists containing subplot information: [x_min, x_max, y_min, y_max, max_spectral_value].
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Aug 11, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Aug 11, 2023
+        @version 1.0
         """
-        x_min_main, x_max_main, y_min_main, y_max_main = plot_axis_coords
-        x_range = x_max_main - x_min_main
-        y_range = y_max_main - y_min_main
-        x_step = x_range / num_cols
-        y_step = y_range / num_rows
+        min_main_x, max_main_x, min_main_y, max_main_y = coords_axis_plot
+        domain = max_main_x - min_main_x
+        range_y = max_main_y - min_main_y
+        step_x = domain / cs
+        step_y = range_y / rs
 
-        subplot_info = []
+        array = []
 
-        for row in range(num_rows):
-            for col in range(num_cols):
-                x_min_subplot = x_min_main + col * x_step
-                x_max_subplot = x_min_main + (col + 1) * x_step
-                y_min_subplot = y_min_main + row * y_step
-                y_max_subplot = y_min_main + (row + 1) * y_step
+        for r in range(rs):
+            for c in range(cs):
+                min_x_subplot = min_main_x + c * step_x
+                max_x_subplot = min_main_x + (c + 1) * step_x
+                min_y_subplot = min_main_y + r * step_y
+                max_y_subplot = min_main_y + (r + 1) * step_y
 
                 with np.errstate(all='ignore'):
                     # Extract max spectral value within subplot boundaries
-                    max_spectral_value = np.nanmax(self.spectral_data[row, col, :])
+                    max_spectral_value = np.nanmax(self.spectral_data[r, c, :])
 
                     if np.isnan(max_spectral_value):
                         max_spectral_value = 0.0  # Default value for nan max values
 
-                subplot_info.append([x_min_subplot, x_max_subplot, y_min_subplot, y_max_subplot, max_spectral_value])
+                array.append([min_x_subplot, max_x_subplot, min_y_subplot, max_y_subplot, max_spectral_value])
 
-        return subplot_info
+        return array
 
-    def convert_to_inset_coords(self, total_coords, axis):
+    def convert_to_inset_coordinates(self, coords_total, axis_c):
         """
         Converts a list of data coordinates to inset axis coordinates.
 
-        :param total_coords: (list) List of data coordinates.
-        :param axis: (Axes) Inset axis for the color map.
+        :param coords_total: (list) List of data coordinates.
+        :param axis_c: (Axes) Inset axis for the color map.
 
         :return: (list) List of inset axis coordinates.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Aug 11, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Aug 11, 2023
+        @version 1.0
         """
-        inset_coords = []
-        for x, y in total_coords:
-            data_to_color_map_transform = self.axis.transData + axis.transData.inverted()
-            color_map_coords = data_to_color_map_transform.transform([(x, y)])[0]
-            inset_coords.append(color_map_coords)
+        coords_inset = []
+        for x, y in coords_total:
+            coordinates_data_transformed = self.axis.transData + axis_c.transData.inverted()
+            coords_axis_c = coordinates_data_transformed.transform([(x, y)])[0]
+            coords_inset.append(coords_axis_c)
 
-        return inset_coords
+        return coords_inset
 
     def plot_on_color_map(self, data_color_map):
         """
@@ -731,13 +831,13 @@ class EPSIGUI:
         :param data_color_map: (list) A list of tuples where each tuple contains a data coordinate and its associated
         RGB color.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Aug 11, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Aug 11, 2023
+        @version 1.0
         """
         # Save current axis limits
-        x_limit = self.color_map_axis.get_xlim()
-        y_limit = self.color_map_axis.get_ylim()
+        x_limit = self.axis_color_map.get_xlim()
+        y_limit = self.axis_color_map.get_ylim()
 
         # Extract x and y coordinates and corresponding colors from data_color_map
         x_coords = [coord[0] for coord, _ in data_color_map]
@@ -745,52 +845,49 @@ class EPSIGUI:
         colors = [rgb_color for _, rgb_color in data_color_map]
 
         # Scatter plot of data points with specified colors and transparency
-        self.color_map_axis.scatter(x_coords, y_coords, c=colors, marker='o', alpha=0.01)
+        self.axis_color_map.scatter(x_coords, y_coords, c=colors, marker='o', alpha=0.01)
 
         # Restore original axis limits
-        self.color_map_axis.set_xlim(x_limit)
-        self.color_map_axis.set_ylim(y_limit)
+        self.axis_color_map.set_xlim(x_limit)
+        self.axis_color_map.set_ylim(y_limit)
 
         # Turn off axis ticks and labels
-        self.color_map_axis.axis('off')
+        self.axis_color_map.axis('off')
 
         # Refresh the plot to display the color map on the axis
         plt.draw()
 
     def remove_axes(self, event):
         """
-        Callback function for the colormap button click event.
+        Callback function for the refresh button click event.
         Removes everything plotted on the axes.
 
-        Author: Benjamin (Ben) Yoon
-        Date: Mon, Aug 14, 2023
-        Version: 1.0
+        @author Benjamin (Ben) Yoon
+        @date Fri, Sep 29, 2023
+        @version 1.1
         """
-        print("button works")
         # Clear epsi_axis, plot_axis, and color_map_axis
-        self.epsi_axis.remove()
-        self.plot_axis.remove()
-        self.color_map_axis.remove()
+        if self.axis_epsi_data is not None and self.is_write_epsi_on is True:
+            self.axis_epsi_data.clear()
+            self.axis_epsi_data.axis("off")
+        if self.axis_plot is not None and self.is_write_epsi_on is True:
+            self.axis_plot.clear()
+            self.axis_plot.axis("off")
+        if self.axis_color_map is not None and self.is_color_map_on is True:
+            self.axis_color_map.clear()
+            self.axis_color_map.axis("off")
+        self.is_write_epsi_on = False
+        self.is_epsi_on = False
+        self.is_color_map_on = False
         plt.draw()
 
 
 if __name__ == "__main__":
     """
-    Author: Benjamin Yoon
-    Date: Fri, Jul 21, 2023
-    Version: 1.0
-        Main execution block when this script is run directly.
+    @author: Benjamin (Ben) Yoon
+    @date: Fri, Sep 29, 2023
+    @version: 1.1
+    Main execution block when this script is run directly.
     """
-    folder_path_dcm = "/Users/benjaminyoon/Desktop/PIGI folder/Projects/Project2 EPSI GUI in Python/EPSI " \
-                      "GUI/data_mouse_kidney/s_2023041103/fsems_rat_liver_03.dmc/"
-    folder_path_13c = "/Users/benjaminyoon/Desktop/PIGI folder/Projects/Project2 EPSI GUI in Python/EPSI " \
-                      "GUI/data_mouse_kidney/s_2023041103/epsi_16x12_13c_"
-    folder_path_fid = "/Users/benjaminyoon/Desktop/PIGI folder/Projects/Project2 EPSI GUI in Python/EPSI " \
-                      "GUI/data_mouse_kidney/s_2023041103/fsems_rat_liver_03"
-    epsi_plot_shift = [-0.3, -0.4]
-    epsi_information = {
-        'pictures_to_read_write': 1,
-        'proton': 60,
-        'centric': 1
-    }
-    viewer = EPSIGUI(folder_path_dcm, folder_path_13c, folder_path_fid, epsi_plot_shift, epsi_information)
+    viewer = EPSIGUI(folder_path_dcm, folder_path_13c, folder_path_fid, epsi_plot_shift, epsi_information, columns,
+                     rows, coordinates_axis_plot)

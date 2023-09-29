@@ -3,15 +3,13 @@ import struct
 import numpy as np
 from scipy.fft import fftn
 
-
-# A class to handle spectral data processing & to read and write procpar & fid files
 class SpectralData:
     """
     Contains methods to process and read spectral data from 'procpar' and 'fid' files.
 
-    Author: Benjamin (Ben) Yoon
-    Date: Fri, Jul 21, 2023
-    Version: 1.0
+    @author: Benjamin (Ben) Yoon
+    @date: Fri, Jul 21, 2023
+    @version: 1.0
     """
 
     # Static method to read specific lines from a 'procpar' file
@@ -25,9 +23,9 @@ class SpectralData:
         :return: A list of values associated with the given parameter name.
         :rtype: list of float
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Jul 21, 2023
-        Version: 1.0
+        @author: Benjamin (Ben) Yoon
+        @date: Fri, Jul 21, 2023
+        @version: 1.0
         """
         file_path = file_path + ".fid"
         file_path = os.path.join(file_path, 'procpar')
@@ -50,9 +48,9 @@ class SpectralData:
         :return: Processed spectral data as a complex numpy array.
         :rtype: ndarray
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Jul 21, 2023
-        Version: 1.0
+        @author: Benjamin (Ben) Yoon
+        @date: Fri, Jul 21, 2023
+        @version: 1.0
         """
         ne = SpectralData.read_write_procpar('ne', file_path)
         ne = ne[0]
@@ -106,9 +104,9 @@ class SpectralData:
         :return: A tuple containing various data elements.
         :rtype: tuple
 
-        Author: Benjamin (Ben) Yoon
-        Date: Fri, Jul 21, 2023
-        Version: 1.0
+        @author: Benjamin (Ben) Yoon
+        @date: Fri, Jul 21, 2023
+        @version: 1.0
         """
         path = f"{file_path}.fid/fid"
         with open(path, "rb") as fid:
