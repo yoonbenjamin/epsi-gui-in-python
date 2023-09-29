@@ -43,7 +43,7 @@ Version: 1.1
 
 ### Installation
 
-1. 
+1. Download the items in this repository, Python 3.10, and an IDE (PyCharm recommended).
 
 ### Instructions
 
