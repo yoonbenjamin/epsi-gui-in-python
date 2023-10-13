@@ -22,11 +22,13 @@ Version: 1.1
 
 ## Features
 
-- General debugging (on/off EPSI buttons, reset button).
+- General debugging.
 - Contrast adjustments are maintained during image slice iteration.
 - All variables that users may want to change moved to the top of the file, base path added.
 - Sliders removed, replaced with arrow buttons and updating text denoting the current value. 
 - Robust system to ensure the removal of previous plots improves the speed of the program significantly.
+- Increased color map generation speed by only calculating ROI coordinates once.
+- Code restructured
 
 ## Getting Started
 
@@ -39,11 +41,11 @@ Version: 1.1
   - `pydicom`
   - `cv2`
 
-- NOTE: INSTALLING PACKAGES CAN BE A HASTLE! I RECOMMEND USING THE PYCHARM IDE FROM JET BRAINS AS IT HAS AN AUTOMATIC PACKAGE INSTALLATION FEATURE.
+- NOTE: INSTALLING PACKAGES CAN BE A HASTLE! I RECOMMEND USING THE VISUAL CODE STUDIO IDE FROM MICROSOFT AS IT HAS AN AUTOMATIC PACKAGE INSTALLATION FEATURE.
 
 ### Installation
 
-1. Download the items in this repository, Python 3.10, and an IDE (PyCharm recommended).
+1. 
 
 ### Instructions
 
