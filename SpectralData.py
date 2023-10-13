@@ -3,6 +3,7 @@ import struct
 import numpy as np
 from scipy.fft import fftn
 
+
 class SpectralData:
     """
     Contains methods to process and read spectral data from 'procpar' and 'fid' files.
