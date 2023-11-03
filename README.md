@@ -30,6 +30,14 @@ Version: 1.1
 - Increased color map generation speed by only calculating ROI coordinates once.
 - Code restructured
 
+Author: Benjamin (Ben) Yoon
+Date: Fri, Oct 27, 2023
+Version: 1.2
+
+## Features
+
+- Interactive file directory selection feature implemented
+
 ## Getting Started
 
 ### Prerequisites
@@ -49,11 +57,11 @@ Version: 1.1
 
 ### Instructions
 
-- Navigate to the beginning of the EPSIGUI.py file
+- Navigate to the beginning of the EpsiGui.py file
   - Change the comment denoted fields accordingly
     
 ### Usage
-  - Run the program (EPSIGUI.py)
+  - Run the program (FileDialog.py)
   - Use buttons to adjust the proton picture, contrast, and EPSI dataset
   - Use on button to plot the EPSI data, and off button to remove
   - Use color map button to select a region of interest for the color map to be applied
